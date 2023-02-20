@@ -1,0 +1,5 @@
+factor  :   (TRUE|FALSE)
+
+term    :   (NOT* (factor))
+
+expr    :   term ((AND|OR) term)

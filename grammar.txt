@@ -1,5 +1,7 @@
 factor  :   (TRUE|FALSE)
+        :   NOT (TRUE|FALSE)
+        :   LPAREN expr RPAREN
 
-term    :   (NOT* (factor))
+term    :   (factor (AND|OR) factor)
 
-expr    :   term ((AND|OR) term)
+expr    :   term (AND|OR) term

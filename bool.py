@@ -15,7 +15,7 @@ class Token(object):
         return self.__str__()
 
 
-class Interpreter(object):
+class Lexer(object):
     def __init__(self, line):
         self.line = line
         self.pointer = -1
@@ -90,71 +90,10 @@ class Interpreter(object):
 
         return tokens
 
-    # def eat(self, token_type):
-    #     if self.current_token.type == token_type:
-    #         self.current_token = self.get_token()
-    #     else:
-    #         self.error()
-    #
-    # def value(self):
-    #     token = self.current_token
-    #     print(f'in value {token.type}')
-    #     if token.type == TRUE:
-    #         self.next()
-    #         return True
-    #     elif token.type == FALSE:
-    #         self.next()
-    #         print('here here')
-    #         return False
-    #     return token.value
-
-    # def expr(self):
-
-        # self.current_token = self.get_token()
-        # break_p = True
-        #
-        # # result = self.value()
-        # # print(result)
-        # # while self.current_token.type in (AND, OR, NOT):
-        # #     token = self.current_token
-        # #
-        # #     if token.type == NOT:
-        # #         print(f'in not {result}')
-        # #         self.eat(NOT)
-        # #         result = not result
-        # #         print(f'after not {result}')
-        # while break_p:
-        #     result = self.boolean()
-        #     print(f'in while {result}')
-        #     while self.current_token.type in (AND, OR, NOT):
-        #         token = self.current_token
-        #
-        #         if token.type == NOT:
-        #             print(f'in not {result}')
-        #             self.eat(NOT)
-        #             result = not result
-        #             print(f'after not {result}')
-        #             self.next()
-        #
-        #         elif token.type == AND:
-        #             self.eat(AND)
-        #             result = result and self.current_token.value
-        #         #
-        #         # elif token.type == OR:
-        #         #     self.eat(OR)
-        #         #     result = result or self.current_token.value
-        #         break
-        #
-        #     if self.current_token.type == EOF:
-        #         break_p = False
-        #
-        # if result:
-        #     return 'T'
-        # else:
-        #     return 'F'
-
     def error(self):
         raise Exception('Invalid syntax!')
+
+
 # NODES
 
 
@@ -179,10 +118,36 @@ class BinOpNode:
 class NotNode:
     def __init__(self, ops, node):
         self.ops = ops
-        self.right_node = node
+        self.node = node
 
     def __repr__(self):
-        return f'({self.ops}, {self.right_node})'
+        return f'({self.ops}, {self.node})'
+
+
+#######################################
+# PARSE RESULT
+#######################################
+
+class ParseResult:
+    def __init__(self):
+        self.error = None
+        self.node = None
+
+    def register(self, res):
+        if isinstance(res, ParseResult):
+            if res.error: self.error = res.error
+            return res.node
+
+        return res
+
+    def success(self, node):
+        self.node = node
+        return self
+
+    def failure(self, error):
+        self.error = error
+        return self
+
 
 # Parser
 
@@ -202,40 +167,112 @@ class Parser:
 
     def parse(self):
         res = self.expr()
+
         return res
 
     def factor(self):
+        res = ParseResult()
         tok = self.current_token
 
         if tok.type in (TRUE, FALSE):
-            self.advance()
-            return BoolNode(tok)
-        elif tok.type is NOT:
-            next_node = self.advance()
-            self.advance()
-            return NotNode(tok, next_node)
+            res.register(self.advance())
+            return res.success(BoolNode(tok))
+        # elif tok.type is NOT:
+        #     next_node = res.register(self.advance())
+        #     res.register(self.advance())
+        #     return res.success(NotNode(tok, next_node))
 
     def term(self):
-        res = self.factor()
+        res = ParseResult()
+        val = res.register(self.factor())
 
         while self.current_token.type is NOT:
             op_tok = self.current_token
-            self.advance()
-            right = self.factor()
-            res = NotNode(op_tok, right)
+            res.register(self.advance())
+            right = res.register(self.factor())
+            val = NotNode(op_tok, right)
 
-        return res
+        return res.success(val)
 
     def expr(self):
-        left = self.term()
+        res = ParseResult()
+        left = res.register(self.term())
 
-        while self.current_token.type in (AND, OR, NOT):
+        while self.current_token.type in (AND, OR):
             op_tok = self.current_token
-            self.advance()
-            right = self.term()
+            res.register(self.advance())
+            right = res.register(self.term())
             left = BinOpNode(left, op_tok, right)
 
-        return left
+        return res.success(left)
+
+
+# Bool
+
+class Bool:
+    def __init__(self, value):
+        self.value = value
+
+    def to_bool(self):
+        return self.value.type == TRUE
+
+    def and_to(self, other):
+        if isinstance(other, Bool):
+            if Bool(self.to_bool() and other.to_bool()).value:
+                return Bool(Token(TRUE))
+            return Bool(Token(FALSE))
+
+    def or_to(self, other):
+        if isinstance(other, Bool):
+            if Bool(self.to_bool() or other.to_bool()).value:
+                return Bool(Token(TRUE))
+            return Bool(Token(FALSE))
+
+    def not_to(self):
+        if self.value.type == TRUE:
+            self.value = Token(FALSE)
+        elif self.value.type == FALSE:
+            self.value = Token(TRUE)
+
+        return self
+
+    def __repr__(self):
+        return str(self.value)
+
+
+class Interpreter:
+    def visit(self, node):
+        method_name = f'visit_{type(node).__name__}'
+        method = getattr(self, method_name, self.no_visit_method)
+        return method(node)
+
+    def no_visit_method(self, node):
+        raise Exception(f'No visit_{type(node).__name__} method defined')
+
+    def visit_BoolNode(self, node):
+        return Bool(node.tok)
+
+    def visit_NotNode(self, node):
+        unary = self.visit(node.node)
+        print(unary)
+
+        if node.ops.type == NOT:
+            print('inside not')
+            unary = unary.not_to()
+            print(unary)
+
+        return unary
+
+    def visit_BinOpNode(self, node):
+        left = self.visit(node.left_node)
+        right = self.visit(node.right_node)
+
+        if node.ops.type == AND:
+            result = left.and_to(right)
+        elif node.ops.type == OR:
+            result = left.or_to(right)
+
+        return  result
 
 
 def main():
@@ -246,13 +283,18 @@ def main():
             break
         if not text:
             continue
-        interpreter = Interpreter(text)
-        tokens = interpreter.get_token()
-        print(tokens)
+        lexer = Lexer(text)
+        tokens = lexer.get_token()
+        # print(tokens)
 
         parser = Parser(tokens)
         ast = parser.parse()
-        print(ast)
+        # print(ast)
+
+        interpreter = Interpreter()
+        result = interpreter.visit(ast.node)
+
+        print(result)
 
 
 if __name__ == '__main__':

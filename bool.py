@@ -30,19 +30,6 @@ class Lexer(object):
         else:
             self.current_char = self.line[self.pointer]
 
-    # def boolean(self):
-    #     """Assign boolean value of true or false for T and F"""
-    #     if self.current_char == 'T':
-    #         value = True
-    #         # self.next()
-    #     elif self.current_char == 'F':
-    #         value = False
-    #         self.eat()
-    #     else:
-    #         value = ''
-    #         self.next()
-    #     return value
-
     def del_space(self):
         """ delete whitespace"""
         while self.current_char is not None and self.current_char.isspace():
@@ -177,10 +164,12 @@ class Parser:
         if tok.type in (TRUE, FALSE):
             res.register(self.advance())
             return res.success(BoolNode(tok))
-        # elif tok.type is NOT:
-        #     next_node = res.register(self.advance())
-        #     res.register(self.advance())
-        #     return res.success(NotNode(tok, next_node))
+        elif tok.type == LPAREN:
+            res.register(self.advance())
+            expr = res.register(self.expr())
+            if self.current_token.type == RPAREN:
+                res.register(self.advance())
+                return res.success(expr)
 
     def term(self):
         res = ParseResult()
@@ -250,6 +239,7 @@ class Interpreter:
         raise Exception(f'No visit_{type(node).__name__} method defined')
 
     def visit_BoolNode(self, node):
+        # print('bool')
         return Bool(node.tok)
 
     def visit_NotNode(self, node):
@@ -257,21 +247,25 @@ class Interpreter:
         print(unary)
 
         if node.ops.type == NOT:
-            print('inside not')
+            # print('inside not')
             unary = unary.not_to()
             print(unary)
 
         return unary
 
     def visit_BinOpNode(self, node):
+        # print('bin')
         left = self.visit(node.left_node)
         right = self.visit(node.right_node)
+        # print(f"left: {left}")
+        # print(f"right: {right}")
 
         if node.ops.type == AND:
             result = left.and_to(right)
         elif node.ops.type == OR:
             result = left.or_to(right)
 
+        # print(f"result: {result}")
         return  result
 
 
@@ -289,7 +283,7 @@ def main():
 
         parser = Parser(tokens)
         ast = parser.parse()
-        # print(ast)
+        # print(ast.node)
 
         interpreter = Interpreter()
         result = interpreter.visit(ast.node)
